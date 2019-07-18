@@ -1,5 +1,6 @@
 #pragma once
 
+#include "wl/listener.hpp"
 #include "wlr.hpp"
 
 class server;
@@ -10,13 +11,9 @@ private:
     server*           server_;
     wlr_input_device* device_;
 
-    wl_listener modifiers_;
-    wl_listener key_;
+    wl::listener modifiers_;
+    wl::listener key_;
 
 public:
     keyboard(server* serv, wlr_input_device* device);
-
-    static void handle_modifiers(wl_listener* listener, void*);
-
-    static void handle_key(wl_listener* listener, void* data);
 };
