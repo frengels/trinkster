@@ -1,4 +1,5 @@
 trinkster_src = [
+  'wl/listener.cpp',
   'keyboard.cpp',
   'server.cpp',
   'output.cpp',
