@@ -22,6 +22,7 @@ trinkster_inc = include_directories('include')
 wayland_server_dep = dependency('wayland-server')
 wayland_client_dep = dependency('wayland-client')
 wayland_protos_dep = dependency('wayland-protocols')
+xkbcommon_dep = dependency('xkbcommon')
 wlroots_dep = dependency('wlroots', version: '>=0.6')
 glm_dep = dependency('glm')
 
