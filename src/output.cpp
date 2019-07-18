@@ -5,13 +5,6 @@
 #include "server.hpp"
 #include "view.hpp"
 
-output::output(server* serv, wlr_output* output)
-    : server_{serv}, wlr_output_{output}
-{
-    frame_.notify = handle_frame;
-    wl_signal_add(&wlr_output_->events.frame, &frame_);
-}
-
 struct render_data
 {
     ::server*     server;
@@ -55,46 +48,52 @@ static void render_surface(wlr_surface* surface, int sx, int sy, void* data)
     wlr_surface_send_frame_done(surface, rdata.when);
 }
 
-void output::handle_frame(wl_listener* listener, void* data)
+output::output(server* serv, wlr_output* output)
+    : server_{serv}, wlr_output_{output}, frame_{[](auto* listener,
+                                                    void* data) {
+          (void) data;
+          ::output* self     = wl_container_of(listener, self, frame_);
+          auto*     renderer = self->server_->renderer();
+
+          struct timespec now;
+          clock_gettime(CLOCK_MONOTONIC, &now);
+
+          if (!wlr_output_attach_render(self->wlr_output_, NULL))
+          {
+              return;
+          }
+
+          int width, height;
+          wlr_output_effective_resolution(self->wlr_output_, &width, &height);
+
+          wlr_renderer_begin(renderer, width, height);
+
+          float color[4] = {0.3f, 0.3f, 0.3f, 1.0f};
+          wlr_renderer_clear(renderer, color);
+
+          std::for_each(self->server_->views().rbegin(),
+                        self->server_->views().rend(),
+                        [&](auto&& v) {
+                            if (!v->mapped())
+                            {
+                                return;
+                            }
+
+                            render_data rdata{self->server_,
+                                              self->wlr_output_,
+                                              v.get(),
+                                              renderer,
+                                              &now};
+
+                            wlr_xdg_surface_for_each_surface(
+                                v->xdg_surface(), render_surface, &rdata);
+                        });
+
+          wlr_output_render_software_cursors(self->wlr_output_, nullptr);
+
+          wlr_renderer_end(renderer);
+          wlr_output_commit(self->wlr_output_);
+      }}
 {
-    (void) data;
-    output* self     = wl_container_of(listener, self, frame_);
-    auto*   renderer = self->server_->renderer();
-
-    struct timespec now;
-    clock_gettime(CLOCK_MONOTONIC, &now);
-
-    if (!wlr_output_attach_render(self->wlr_output_, NULL))
-    {
-        return;
-    }
-
-    int width, height;
-    wlr_output_effective_resolution(self->wlr_output_, &width, &height);
-
-    wlr_renderer_begin(renderer, width, height);
-
-    float color[4] = {0.3f, 0.3f, 0.3f, 1.0f};
-    wlr_renderer_clear(renderer, color);
-
-    std::for_each(
-        self->server_->views().rbegin(),
-        self->server_->views().rend(),
-        [&](auto&& v) {
-            if (!v->mapped())
-            {
-                return;
-            }
-
-            render_data rdata{
-                self->server_, self->wlr_output_, v.get(), renderer, &now};
-
-            wlr_xdg_surface_for_each_surface(
-                v->xdg_surface(), render_surface, &rdata);
-        });
-
-    wlr_output_render_software_cursors(self->wlr_output_, nullptr);
-
-    wlr_renderer_end(renderer);
-    wlr_output_commit(self->wlr_output_);
+    wl::connect(wlr_output_->events.frame, frame_);
 }
