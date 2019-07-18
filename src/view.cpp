@@ -3,21 +3,37 @@
 #include "server.hpp"
 
 view::view(server* serv, wlr_xdg_surface* surface)
-    : server_{serv}, xdg_surface_{surface}
-{
-    map_.notify = handle_xdg_surface_map;
-    wl_signal_add(&xdg_surface_->events.map, &map_);
+    : server_{serv}, xdg_surface_{surface}, map_{[](auto* listener, void*) {
+          view* self    = wl_container_of(listener, self, map_);
+          self->mapped_ = true;
+          self->keyboard_focus(*self->xdg_surface()->surface);
+      }},
+      unmap_{[](auto* listener, void*) {
+          view* self    = wl_container_of(listener, self, unmap_);
+          self->mapped_ = false;
+      }},
+      request_move_{[](auto* listener, void* data) {
+          // TODO check if it's a user requested move
+          view* self  = wl_container_of(listener, self, request_move_);
+          auto* event = static_cast<wlr_xdg_toplevel_move_event*>(data);
+          (void) event;
+          self->begin_interactive_move();
+      }},
+      request_resize_{[](auto* listener, void* data) {
+          // TODO again check for user request
+          view* self  = wl_container_of(listener, self, request_resize_);
+          auto* event = static_cast<wlr_xdg_toplevel_resize_event*>(data);
 
-    unmap_.notify = handle_xdg_surface_unmap;
-    wl_signal_add(&xdg_surface_->events.unmap, &unmap_);
+          self->begin_interactive_resize(event->edges);
+      }}
+{
+    wl::connect(xdg_surface_->events.map, map_);
+    wl::connect(xdg_surface_->events.unmap, unmap_);
 
     auto* toplevel = xdg_surface_->toplevel;
 
-    request_move_.notify = handle_xdg_toplevel_request_move;
-    wl_signal_add(&toplevel->events.request_move, &request_move_);
-
-    request_resize_.notify = handle_xdg_toplevel_request_resize;
-    wl_signal_add(&toplevel->events.request_resize, &request_resize_);
+    wl::connect(toplevel->events.request_move, request_move_);
+    wl::connect(toplevel->events.request_resize, request_resize_);
 }
 
 void view::keyboard_focus(wlr_surface& surf)
@@ -94,38 +110,4 @@ void view::set_size(uint32_t width, uint32_t height)
 {
     // TODO: some more advanced buffer commit stuff
     wlr_xdg_toplevel_set_size(xdg_surface_, width, height);
-}
-
-void view::handle_xdg_surface_map(wl_listener* listener, void* data)
-{
-    (void) data;
-
-    view* self    = wl_container_of(listener, self, map_);
-    self->mapped_ = true;
-    self->keyboard_focus(*self->xdg_surface_->surface);
-}
-
-void view::handle_xdg_surface_unmap(wl_listener* listener, void* data)
-{
-    (void) data;
-    view* self    = wl_container_of(listener, self, unmap_);
-    self->mapped_ = false;
-}
-
-void view::handle_xdg_toplevel_request_move(wl_listener* listener, void* data)
-{
-    // TODO check if it's a user requested move
-    view* self  = wl_container_of(listener, self, request_move_);
-    auto* event = static_cast<wlr_xdg_toplevel_move_event*>(data);
-    (void) event;
-    self->begin_interactive_move();
-}
-
-void view::handle_xdg_toplevel_request_resize(wl_listener* listener, void* data)
-{
-    // TODO again check for user request
-    view* self  = wl_container_of(listener, self, request_resize_);
-    auto* event = static_cast<wlr_xdg_toplevel_resize_event*>(data);
-
-    self->begin_interactive_resize(event->edges);
 }
