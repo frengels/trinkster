@@ -17,7 +17,7 @@ add_project_arguments(
   language: [ 'c', 'cpp' ],
 )
 
-trinkster_inc = include_directories('include')
+trinkster_inc = include_directories('src')
 
 wayland_server_dep = dependency('wayland-server')
 wayland_client_dep = dependency('wayland-client')
@@ -28,3 +28,8 @@ glm_dep = dependency('glm')
 
 subdir('protocol')
 subdir('src')
+
+if get_option('tests')
+  catch2_dep = dependency('catch2')
+  subdir('tests')
+endif
