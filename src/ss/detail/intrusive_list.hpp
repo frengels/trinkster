@@ -9,7 +9,9 @@ namespace detail
 {
 // intrusive traits must contain the offset of the link within the T
 template<typename T>
-struct intrusive_link_offset;
+struct intrusive_link_offset
+    : std::integral_constant<std::size_t, T::link_offset>
+{};
 
 template<typename T>
 constexpr auto intrusive_link_offset_v = intrusive_link_offset<T>::value;
@@ -148,11 +150,11 @@ public:
     using const_pointer   = const value_type*;
 
 private:
-    template<typename U>
+    template<typename Link, typename U>
     class iterator_base
     {
         // give all iterator_base access amongst each other
-        template<typename U1>
+        template<typename Link_, typename U_>
         friend class iterator_base;
 
     public:
@@ -163,53 +165,55 @@ private:
         using iterator_category = std::bidirectional_iterator_tag;
 
     private:
-        link* current_{nullptr};
+        Link current_{nullptr};
 
     public:
         constexpr iterator_base() noexcept = default;
 
-        constexpr iterator_base(link* curr) noexcept : current_{curr}
+        constexpr iterator_base(Link curr) noexcept : current_{curr}
         {}
 
-        template<typename U_>
-        constexpr iterator_base(const iterator_base<U_>& other) noexcept
+        template<typename Link_, typename U_>
+        constexpr iterator_base(const iterator_base<Link_, U_>& other) noexcept
             : current_{other.current_}
         {
-            static_assert(
-                std::is_convertible_v<typename iterator_base<U_>::reference,
-                                      reference>,
-                "Incompatible reference types");
-            static_assert(
-                std::is_convertible_v<typename iterator_base<U_>::pointer,
-                                      pointer>,
-                "Incompatible pointer types");
+            static_assert(std::is_convertible_v<
+                              typename iterator_base<Link_, U_>::reference,
+                              reference>,
+                          "Incompatible reference types");
+            static_assert(std::is_convertible_v<
+                              typename iterator_base<Link_, U_>::pointer,
+                              pointer>,
+                          "Incompatible pointer types");
         }
 
-        template<typename U_>
+        template<typename Link_, typename U_>
         constexpr iterator_base&
-        operator=(const iterator_base<U_>& other) noexcept
+        operator=(const iterator_base<Link_, U_>& other) noexcept
         {
-            static_assert(
-                std::is_convertible_v<typename iterator_base<U_>::reference,
-                                      reference>,
-                "Incompatible reference types");
-            static_assert(
-                std::is_convertible_v<typename iterator_base<U_>::pointer,
-                                      pointer>,
-                "Incompatible pointer types");
+            static_assert(std::is_convertible_v<
+                              typename iterator_base<Link_, U_>::reference,
+                              reference>,
+                          "Incompatible reference types");
+            static_assert(std::is_convertible_v<
+                              typename iterator_base<Link_, U_>::pointer,
+                              pointer>,
+                          "Incompatible pointer types");
 
             current_ = other.current_;
             return *this;
         }
 
-        template<typename U_>
-        constexpr bool operator==(const iterator_base<U_>& other) const noexcept
+        template<typename Link_, typename U_>
+        constexpr bool operator==(const iterator_base<Link_, U_>& other) const
+            noexcept
         {
             return current_ == other.current_;
         }
 
-        template<typename U_>
-        constexpr bool operator!=(const iterator_base<U_>& other) const noexcept
+        template<typename Link_, typename U_>
+        constexpr bool operator!=(const iterator_base<Link_, U_>& other) const
+            noexcept
         {
             return !(*this == other);
         }
@@ -242,11 +246,21 @@ private:
 
         reference operator*() const noexcept
         {
-            // calculate back from the link to the actual object
-            auto* ptr = reinterpret_cast<char*>(current_);
-            ptr -= offset; // this is the location of our actual object
-            auto* obj = reinterpret_cast<pointer>(ptr);
-            return *obj;
+            if constexpr (std::is_const_v<std::remove_pointer_t<Link>>)
+            {
+                const auto* ptr = reinterpret_cast<const char*>(current_);
+                ptr -= offset;
+                const auto* obj = reinterpret_cast<pointer>(ptr);
+                return *obj;
+            }
+            else
+            {
+                // calculate back from the link to the actual object
+                auto* ptr = reinterpret_cast<char*>(current_);
+                ptr -= offset; // this is the location of our actual object
+                auto* obj = reinterpret_cast<pointer>(ptr);
+                return *obj;
+            }
         }
 
         pointer operator->() const noexcept
@@ -258,14 +272,14 @@ private:
         }
     };
 
-    class iterator : public iterator_base<T>
+    class iterator : public iterator_base<link*, T>
     {
-        using iterator_base<T>::iterator_base;
+        using iterator_base<link*, T>::iterator_base;
     };
 
-    class const_iterator : public iterator_base<const T>
+    class const_iterator : public iterator_base<const link*, const T>
     {
-        using iterator_base<const T>::iterator_base;
+        using iterator_base<const link*, const T>::iterator_base;
     };
 
     using reverse_iterator       = std::reverse_iterator<iterator>;
@@ -290,12 +304,12 @@ public:
 
     constexpr const_iterator begin() const noexcept
     {
-        return {link_.next};
+        return const_iterator{link_.next};
     }
 
     constexpr const_iterator end() const noexcept
     {
-        return {&link_};
+        return const_iterator{&link_};
     }
 
     constexpr const_iterator cbegin() const noexcept
