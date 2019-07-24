@@ -25,6 +25,7 @@ wayland_protos_dep = dependency('wayland-protocols')
 xkbcommon_dep = dependency('xkbcommon')
 wlroots_dep = dependency('wlroots', version: '>=0.6')
 glm_dep = dependency('glm')
+waysig_dep = dependency('waysig')
 
 subdir('protocol')
 subdir('src')

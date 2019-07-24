@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cursor.hpp"
+#include "wl/listener.hpp"
 #include "wlr.hpp"
 
 #include <memory>
@@ -9,6 +10,7 @@
 #include <vector>
 
 #include <glm/vec2.hpp>
+#include <ws/ws.hpp>
 
 class keyboard;
 class output;
@@ -21,9 +23,11 @@ private:
     wlr_backend*  backend_;
     wlr_renderer* renderer_;
 
-    wlr_xdg_shell*                     xdg_shell_;
-    wl_listener                        new_xdg_surface_;
-    wl_listener                        xdg_surface_destroy_;
+    wlr_xdg_shell*                   xdg_shell_;
+    ws::slot<void(wlr_xdg_surface&)> new_xdg_surface_;
+    // wl::listener                       new_xdg_surface_;
+    ws::slot<void(wlr_xdg_surface&)> xdg_surface_destroy_;
+    // wl::listener                       xdg_surface_destroy_;
     std::vector<std::unique_ptr<view>> views_;
 
     wlr_cursor*          cursor_;
@@ -125,7 +129,4 @@ public:
     static void handle_cursor_frame(wl_listener* listener, void* data);
 
     static void handle_new_output(wl_listener* listener, void* data);
-
-    static void handle_new_xdg_surface(wl_listener* listener, void* data);
-    static void handle_xdg_surface_destroy(wl_listener* listener, void* data);
 };

@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include <ws/ext/wl.hpp>
+
 #include "keyboard.hpp"
 #include "output.hpp"
 #include "view.hpp"
@@ -10,7 +12,35 @@ server::server(wl_display* dpy)
     : display_{dpy}, backend_{wlr_backend_autocreate(display_, nullptr)},
       renderer_{wlr_backend_get_renderer(backend_)},
 
-      xdg_shell_{wlr_xdg_shell_create(display_)}, cursor_{wlr_cursor_create()},
+      xdg_shell_{wlr_xdg_shell_create(display_)},
+      new_xdg_surface_{[](auto& slot, wlr_xdg_surface& xdg_surface) {
+          auto& this_ = WS_CONTAINER_OF(slot, server, new_xdg_surface_);
+
+          if (xdg_surface.role != WLR_XDG_SURFACE_ROLE_TOPLEVEL)
+          {
+              // don't care about popups
+              return;
+          }
+
+          // this is a top level let's create a view for it
+          auto v = std::make_unique<view>(&this_, &xdg_surface);
+          ws::connect(v->xdg_surface()->events.destroy,
+                      this_.xdg_surface_destroy_);
+          this_.views_.push_back(std::move(v));
+      }},
+      xdg_surface_destroy_{[](auto& slot, wlr_xdg_surface& xdg_surface) {
+          auto& this_ = WS_CONTAINER_OF(slot, server, xdg_surface_destroy_);
+
+          auto& views = this_.views_;
+
+          auto it =
+              std::find_if(std::begin(views), std::end(views), [&](auto&& v) {
+                  return v->xdg_surface() == &xdg_surface;
+              });
+
+          views.erase(it);
+      }},
+      cursor_{wlr_cursor_create()},
       cursor_mgr_{wlr_xcursor_manager_create(nullptr, 24)},
       seat_{wlr_seat_create(display_, "seat0")}, output_layout_{
                                                      wlr_output_layout_create()}
@@ -23,10 +53,7 @@ server::server(wl_display* dpy)
     new_output_.notify = handle_new_output;
     wl_signal_add(&backend_->events.new_output, &new_output_);
 
-    new_xdg_surface_.notify = handle_new_xdg_surface;
-    wl_signal_add(&xdg_shell_->events.new_surface, &new_xdg_surface_);
-
-    xdg_surface_destroy_.notify = handle_xdg_surface_destroy;
+    ws::connect(xdg_shell_->events.new_surface, new_xdg_surface_);
 
     wlr_cursor_attach_output_layout(cursor_, output_layout_);
     wlr_xcursor_manager_load(cursor_mgr_, 1);
@@ -333,36 +360,4 @@ void server::handle_new_output(wl_listener* listener, void* data)
     self->outputs_.push_back(out);
     wlr_output_layout_add_auto(self->output_layout(), wlr_output);
     wlr_output_create_global(wlr_output);
-}
-
-void server::handle_new_xdg_surface(wl_listener* listener, void* data)
-{
-    server* self        = wl_container_of(listener, self, new_xdg_surface_);
-    auto*   xdg_surface = static_cast<wlr_xdg_surface*>(data);
-
-    if (xdg_surface->role != WLR_XDG_SURFACE_ROLE_TOPLEVEL)
-    {
-        // don't care about popups
-        return;
-    }
-
-    // this is a top level let's create a view for it
-    auto v = std::make_unique<view>(self, xdg_surface);
-    wl_signal_add(&v->xdg_surface()->events.destroy,
-                  &self->xdg_surface_destroy_);
-    self->views_.push_back(std::move(v));
-}
-
-void server::handle_xdg_surface_destroy(wl_listener* listener, void* data)
-{
-    server* self        = wl_container_of(listener, self, xdg_surface_destroy_);
-    auto*   xdg_surface = static_cast<wlr_xdg_surface*>(data);
-
-    auto& views = self->views_;
-
-    auto it = std::find_if(std::begin(views), std::end(views), [&](auto&& v) {
-        return v->xdg_surface() == xdg_surface;
-    });
-
-    views.erase(it);
 }

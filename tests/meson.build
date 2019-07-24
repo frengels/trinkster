@@ -1,6 +1,4 @@
 tests = [
-    'ss/intrusive_list',
-    'ss/slot',
 ]
 
 catch_lib = static_library(
